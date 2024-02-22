@@ -28,23 +28,17 @@ public class Otp implements Serializable {
 	
 	@Id
     @Column(unique = true)
-    private String email;
 	private String phoneNumber;
     private String otp;
     private int otpCount;
-    @ManyToOne
-    @JoinColumn(name = "otp_type",columnDefinition = ColumnDefinition.NVARCHAR8)
-    private OtpType otpType;
     @CreationTimestamp
     private Date generatedTime;
     
-	public Otp(String email, String phoneNumber, String otp, int otpCount, OtpType otpType, Date generatedTime) {
+	public Otp(String phoneNumber, String otp, int otpCount, Date generatedTime) {
 		super();
-		this.email = email;
 		this.phoneNumber = phoneNumber;
 		this.otp = otp;
 		this.otpCount = otpCount;
-		this.otpType = otpType;
 		this.generatedTime = generatedTime;
 	}
 }

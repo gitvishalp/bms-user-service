@@ -16,7 +16,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -31,12 +30,13 @@ public class User implements Serializable {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.UUID)
-	@Column(columnDefinition = ColumnDefinition.UNIQUEIDENTIFIER)
+	//@Column(columnDefinition = ColumnDefinition.UNIQUEIDENTIFIER)
 	private String id;
 	private String firstName;
 	private String lastName;
 	private LocalDate dob;
 	private String phoneNumber;
+	private boolean phoneNumberVerified;
 	private String email;
 	private String password;
 	@Column(columnDefinition = "INT DEFAULT 0")
