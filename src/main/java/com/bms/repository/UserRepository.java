@@ -11,4 +11,5 @@ import com.bms.entity.User;
 public interface UserRepository extends JpaRepository<User, String> {
 
 	Optional<User> findByPhoneNumber(String phoneNumber);
+	Optional<User> findByEmail(String email);
 }
