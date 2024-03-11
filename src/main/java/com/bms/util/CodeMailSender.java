@@ -2,6 +2,7 @@ package com.bms.util;
 
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
+import java.util.Base64;
 
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -21,23 +22,23 @@ public class CodeMailSender implements Serializable {
 	private final JavaMailSender mailSender;
 	
 	
-	public String sendCode(String name, String senderEmail, String code) throws UnsupportedEncodingException, MessagingException {
+	public String sendResetPasswordLink(String name, String senderEmail, String code) throws UnsupportedEncodingException, MessagingException {
 		try {
 			MimeMessage message = mailSender.createMimeMessage();           
 		    MimeMessageHelper helper = new MimeMessageHelper(message);
 		    helper.setFrom("noreply@BMS");
 		    helper.setTo(senderEmail);
-		     
+	        Base64.Encoder encoder = Base64.getEncoder();
+	        String encodeEmail = encoder.encodeToString(senderEmail.getBytes());
+	        String encodeCode = encoder.encodeToString(code.getBytes());
 		    String subject = "BMS- ForgetPassword";
 		     
 		    String content = "<p>Dear "+name+","+ "</p>"
 		            + "<p> We received a request to reset the password for your BMS portal"
 		            + " associated with BMS. Your security is our top priority,"
 		            + " and we are here to assist you in accessing your account securely."
-		            + "<br>Your Temporary Password is:</p>"
-		            + "<p><b> " + "<font face=\"Verdana\" size =\"5\" >" + code + "</font></b></p>"
-		            + "<p><b> Use this code to login </b></p>" 
-		            + "<p><font color=\"red\"> this code is valid only for first login. </font></p>"
+		            + "<br>Follow this link to reset your password:</p>"
+		            + "<a href='http://localhost:4200/reset-password-Link?e="+encodeEmail+"&c="+encodeCode+"'>https://bms-portal/reset-password?e="+encodeEmail+encodeCode+"</a>"
 		            + "<br>"
 		            + "<b>Team BMS<b><br>"
 		            + "<h2 style='color:#0771a6'>BMS</h2>";

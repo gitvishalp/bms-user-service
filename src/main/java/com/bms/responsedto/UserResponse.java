@@ -33,6 +33,8 @@ public class UserResponse implements Serializable {
 	private boolean phoneNumberVerified;
 	@JsonProperty("IsActive")
 	private boolean active;
+	@JsonProperty("Address")
+	private AddressResponse address;
 	@JsonProperty("CreatedAt")
 	private Date createdAt;
 	

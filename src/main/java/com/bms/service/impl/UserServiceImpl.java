@@ -4,6 +4,7 @@ package com.bms.service.impl;
 import java.io.UnsupportedEncodingException;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -14,18 +15,22 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.bms.entity.Address;
 import com.bms.entity.EmailCode;
 import com.bms.entity.Otp;
 import com.bms.entity.User;
+import com.bms.repository.AddressRepository;
 import com.bms.repository.EmailCodeRepository;
 import com.bms.repository.OtpRepository;
 import com.bms.repository.UserRepository;
+import com.bms.requestdto.AddressRequest;
 import com.bms.requestdto.ChangePasswordRequest;
 import com.bms.requestdto.LoginRequest;
 import com.bms.requestdto.LoginWIthCode;
 import com.bms.requestdto.NumberVerificationRequest;
 import com.bms.requestdto.OtpRequest;
 import com.bms.requestdto.SignupRequest;
+import com.bms.responsedto.AddressResponse;
 import com.bms.responsedto.LoginResponse;
 import com.bms.responsedto.Response;
 import com.bms.responsedto.UserResponse;
@@ -45,8 +50,9 @@ public class UserServiceImpl implements UserService {
 	private final UserRepository userRepository;
 	private final OtpRepository otpRepository;
 	private final EmailCodeRepository emailCodeRepository;
+	private final AddressRepository addressRepository;
 	private final GenerateOtp generateOtp;
-	private final CodeMailSender codeMailSender;
+	private final CodeMailSender forgetMailSender;
     private final PasswordEncoder passwordEncoder;
     private final JWTTokenUtil jwtTokenUtil;
 
@@ -104,13 +110,13 @@ public class UserServiceImpl implements UserService {
 				otp.get().setOtpCount(0);
 				otp.get().setOtp(null);
 				otpRepository.save(otp.get());
-				return new Response<>(HttpStatus.SC_OK,"Phone Number Already Exists! Try Login");
+				return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Phone Number Already Exists! Try Login");
 			}
 			if(user.get().isPhoneNumberVerified()) {
 				otp.get().setOtpCount(0);
 				otp.get().setOtp(null);
 				otpRepository.save(otp.get());
-				return new Response<>(HttpStatus.SC_OK,"Phone Number Already Verified!");
+				return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Phone Number Already Verified!");
 			}
 		}
 		if(otp.get().getOtp()==null) {
@@ -145,7 +151,7 @@ public class UserServiceImpl implements UserService {
         	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Invalid Phone Number");
         }
         if(user.get().isActive()) {
-        	return new Response<>(HttpStatus.SC_OK,"User Already Created for this Phone Number!");
+        	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"User Already Created for this Phone Number!");
         }
         if(!emailUser.isEmpty()) {
         	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Email already exists!");
@@ -161,7 +167,7 @@ public class UserServiceImpl implements UserService {
         User newUser = userRepository.save(user.get());
         Date date = Date.from(newUser.getDob().atStartOfDay().atZone(ZoneId.systemDefault()).toInstant());
         UserResponse response= new UserResponse(newUser.getId(),newUser.getFirstName(),newUser.getLastName(),newUser.getDob(),newUser.getPhoneNumber(),
-        				newUser.getEmail(),newUser.getCountry(),newUser.isPhoneNumberVerified(),newUser.isActive(),newUser.getCreatedAt());
+        				newUser.getEmail(),newUser.getCountry(),newUser.isPhoneNumberVerified(),newUser.isActive(),null,newUser.getCreatedAt());
         return new Response<>(response);
 	}
 
@@ -195,10 +201,16 @@ public class UserServiceImpl implements UserService {
 		if(!user.get().isActive()) {
 			return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"User Not Found");
 		}
+		Optional<Address> ad = addressRepository.findByUserId(userId);
+		AddressResponse addressResponse = null;
+		if(!ad.isEmpty()) {
+			addressResponse = new AddressResponse(ad.get().getId(),ad.get().getAddressLine1(),ad.get().getAddressLine2(),
+					ad.get().getCity(),ad.get().getState(),ad.get().getCountry(),ad.get().getPostalCode(),ad.get().getCreatedAt());
+		}
        // Date date = Date.from(user.get().getDob().atStartOfDay().atZone(ZoneId.systemDefault()).toInstant());
 		return new Response<>(new UserResponse(user.get().getId(),user.get().getFirstName(),user.get().getLastName(),
 				user.get().getDob(),user.get().getPhoneNumber(),user.get().getEmail(),user.get().getCountry(),
-				user.get().isPhoneNumberVerified(),user.get().isActive(),user.get().getCreatedAt()));
+				user.get().isPhoneNumberVerified(),user.get().isActive(),addressResponse,user.get().getCreatedAt()));
 	}
 
 	@Override
@@ -257,7 +269,7 @@ public class UserServiceImpl implements UserService {
 		code.setEmail(email);
 		code.setGeneratedTime(new Date());
 		String userName = user.get().getFirstName()+" "+user.get().getLastName();
-		String isMailSend = codeMailSender.sendCode(userName, email, oneTimeCode);
+		String isMailSend = forgetMailSender.sendResetPasswordLink(userName, email, oneTimeCode);
 		emailCodeRepository.save(code);
 		return new Response<>(isMailSend);
 	}
@@ -277,5 +289,86 @@ public class UserServiceImpl implements UserService {
 		userOptional.get().setPassword(passwordEncoder.encode(request.getNewPassword()));
 		userRepository.save(userOptional.get());
 		return new Response<>(HttpStatus.SC_OK,"Password Changed");
+	}
+
+	@Override
+	public Response<String> resetPasswordLink(String email, String code) {
+		Base64.Decoder decoder = Base64.getDecoder();
+		Base64.Encoder encoder = Base64.getEncoder();
+		String decodedEmail = new String(decoder.decode(email));
+		String decodedCode = new String(decoder.decode(code));
+        Optional<User> user =userRepository.findByEmail(decodedEmail);
+        if(user.isEmpty()) {
+        	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Link expired!");
+        }
+        String userKey = decodedCode+" "+encoder.encodeToString(user.get().getId().getBytes());
+		Optional<EmailCode> codeOptional = emailCodeRepository.findById(decodedEmail);
+        if(codeOptional.isEmpty() || codeOptional.get().getCode()==null) {
+        	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Link expired!");
+        }
+        if(decodedCode.equals(codeOptional.get().getCode())) {
+			return new Response<>(userKey);
+		}else {
+			return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Link expired!");
+		}
+	}
+
+	@Override
+	public Response<String> resetPassword(String userKey, ChangePasswordRequest request) {
+		Base64.Decoder decoder = Base64.getDecoder();
+		String userCodeId[] = userKey.split(" ");
+		String userCode = userCodeId[0];
+		String userId = new String(decoder.decode(userCodeId[1]));
+		Optional<User> userOptional = userRepository.findById(userId);
+		if(userOptional.isEmpty()) {
+        	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Something went wrong!");
+		}
+		if(!userOptional.get().isActive()) {
+        	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Something went wrong!");
+		}
+		if(!StringUtils.hasText(request.getNewPassword())) {
+			return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Make Strong Password!");
+		}
+		Optional<EmailCode> emailCode = emailCodeRepository.findById(userOptional.get().getEmail());
+		if(emailCode.isEmpty() || emailCode.get().getCode()==null) {
+			return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Something went wrong!");
+		}
+		if(emailCode.get().getCode().equals(userCode)) {
+			userOptional.get().setPassword(passwordEncoder.encode(request.getNewPassword()));
+			userRepository.save(userOptional.get());
+			emailCode.get().setCode(null);
+			emailCode.get().setCodeCount(0);
+			emailCodeRepository.save(emailCode.get());
+			return new Response<>(HttpStatus.SC_OK,"Password Chnaged Successfully!");
+		}else {
+			return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"Something went wrong!");
+		}
+	}
+
+	@Override
+	public Response<AddressResponse> updateAddress(String userId, AddressRequest request) {
+        Optional<User> user = userRepository.findById(userId);
+        if(user.isEmpty()) {
+        	return new Response<>(HttpStatus.SC_INTERNAL_SERVER_ERROR,"User not found!");
+        }
+        Optional<Address> exAdd = addressRepository.findByUserId(userId);
+        Address ad= null;
+        if(!exAdd.isEmpty()) {
+        	exAdd.get().setAddressLine1(request.getAddressLine1());
+        	exAdd.get().setAddressLine2(request.getAddressLine2());
+        	exAdd.get().setCity(request.getCity());
+        	exAdd.get().setState(request.getState());	
+        	exAdd.get().setCountry(request.getCountry());
+        	exAdd.get().setPostalCode(request.getPostalCode());
+        	ad = addressRepository.save(exAdd.get());
+        }else {
+        	Address address= new Address(user.get(),request.getAddressLine1(),request.getAddressLine2(),
+            		request.getCity(),request.getState(),request.getCountry(),request.getPostalCode()
+            		);
+             ad = addressRepository.save(address);
+        }
+        AddressResponse response = new AddressResponse(ad.getId(),ad.getAddressLine1(),ad.getAddressLine2(),ad.getCity(),
+        		ad.getState(),ad.getCountry(),ad.getPostalCode(),ad.getCreatedAt());
+        return new Response<>(response);
 	}
 }
